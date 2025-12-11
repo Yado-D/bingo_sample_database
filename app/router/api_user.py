@@ -30,10 +30,10 @@ def get_profile(
 
     user_id = current_user.id
 
-    # count of game transactions for this user
+    # count of game transactions for this user (use jester_id)
     gt_count = (
         db.query(func.count(models.GameTransaction.id))
-        .filter(models.GameTransaction.owner_id == user_id)
+        .filter(models.GameTransaction.jester_id == user_id)
         .scalar()
     ) or 0
 
@@ -49,7 +49,7 @@ def get_profile(
     # total wins: count where dedacted_amount < 0
     wins_count = (
         db.query(func.count(models.GameTransaction.id))
-        .filter(models.GameTransaction.owner_id == user_id)
+        .filter(models.GameTransaction.jester_id == user_id)
         .filter(models.GameTransaction.dedacted_amount < 0)
         .scalar()
     ) or 0
@@ -57,7 +57,7 @@ def get_profile(
     # total winnings: sum of -dedacted_amount where dedacted_amount < 0
     total_winnings = (
         db.query(func.coalesce(func.sum(-models.GameTransaction.dedacted_amount), 0))
-        .filter(models.GameTransaction.owner_id == user_id)
+        .filter(models.GameTransaction.jester_id == user_id)
         .filter(models.GameTransaction.dedacted_amount < 0)
         .scalar()
     ) or 0
@@ -90,7 +90,7 @@ def get_transactions(
     try:
         txs = (
             db.query(models.GameTransaction)
-            .filter(models.GameTransaction.owner_id == current_user.id)
+            .filter(models.GameTransaction.jester_id == current_user.id)
             .order_by(models.GameTransaction.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -102,7 +102,7 @@ def get_transactions(
             result.append(
                 {
                     "date": t.created_at,
-                    "game_pattern": t.game_type,
+                    "game_pattern": getattr(t, "winning_pattern", None),
                     "bet_amount": t.bet_amount,
                     "status": "completed",
                 }

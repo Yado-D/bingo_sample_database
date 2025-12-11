@@ -37,6 +37,8 @@ app.include_router(auth.router)
 app.include_router(management.router)
 app.include_router(__import__('app.api.transactions', fromlist=['']).router)
 app.include_router(__import__('app.api.game_end', fromlist=['']).router)
+app.include_router(__import__('app.router.game', fromlist=['']).router)
+app.include_router(__import__('app.router.users', fromlist=['']).router)
 
 
 @app.get("/")

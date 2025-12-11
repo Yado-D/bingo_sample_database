@@ -62,7 +62,7 @@ class TokenData(BaseModel):
 
 class GameTransactionModel(BaseModel):
     bet_amount: int
-    game_type: str
+    winning_pattern: Optional[str] = None
     number_of_cards: int
     dedacted_amount: int
 
@@ -172,6 +172,21 @@ class GameResultRequest(BaseModel):
     game_session_id: int
     status: GameResultStatus
     win_amount: float = 0.0
+    winning_pattern: Optional[str] = None
+
+
+class EndGameRequest(BaseModel):
+    total_pot: float
+    cut: float
+    winning_pattern: str
+    win_amount: float
+    bet_amount: float
+    date: str
+    time: str
+    jester_name: str
+
+    class Config:
+        from_attributes = True
 
 
 class GameResultResponse(BaseModel):

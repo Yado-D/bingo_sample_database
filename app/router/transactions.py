@@ -103,7 +103,7 @@ def list_transactions(
                 except Exception:
                     pass
                 rows = db.execute(text(
-                    "SELECT id, bet_amount, game_type, number_of_cards, created_at FROM game_transactions"
+                    "SELECT id, bet_amount, winning_pattern, number_of_cards, created_at FROM game_transactions"
                 )).fetchall()
                 txs = [dict(row._mapping) for row in rows]
         else:
@@ -115,7 +115,7 @@ def list_transactions(
                 except Exception:
                     pass
                 rows = db.execute(text(
-                    "SELECT id, bet_amount, game_type, number_of_cards, created_at FROM game_transactions"
+                    "SELECT id, bet_amount, winning_pattern, number_of_cards, created_at FROM game_transactions"
                 )).fetchall()
                 game_rows = [dict(row._mapping) for row in rows]
             txs = db.query(models.PackageTransaction).all() + game_rows

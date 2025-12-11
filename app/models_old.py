@@ -67,20 +67,25 @@ class GameTransaction(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     bet_amount = Column(Float, index=True)
-    game_type = Column(String, index=True)
+    # replaced `game_type` with `winning_pattern` to record how the game was won
+    winning_pattern = Column(String, index=True, nullable=True)
     number_of_cards = Column(Integer, index=True)
     cut_amount = Column(Float, index=True)
     winner_payout = Column(Float, index=True)
+    # total pot for this game (snapshot)
+    total_pot = Column(Float, index=True, nullable=True)
     # amount deducted or added for this transaction (wins as negative values)
     dedacted_amount = Column(Float, index=True, nullable=True)
-    # owner/actor who caused this transaction (often the user who played)
-    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
-    owner_name = Column(String, index=True, nullable=True)
+    # jester/actor who caused this transaction (the player)
+    # `owner_id`/`owner_name` removed in favor of `jester_id`/`jester_name`
     # jester specific fields
     jester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     jester_name = Column(String, index=True, nullable=True)
     # store the user's remaining balance after the transaction
     jester_remaining_balance = Column(Float, index=True, nullable=True)
+    # optional date/time fields provided by frontend
+    tx_date = Column(String, index=True, nullable=True)
+    tx_time = Column(String, index=True, nullable=True)
     # optional snapshot of total/wallet balance after transaction
     total_balance = Column(Float, index=True, nullable=True)
     created_at = Column(

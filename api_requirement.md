@@ -1,23 +1,22 @@
-Here is the comprehensive Backend API Documentation designed for the Bingo Game System.
+Here is the **Final, Consolidated API Requirement Specification**.
 
-### **Base Configuration**
+I have removed all duplicate/legacy routes (like `/user/child`, `/gamet/`, etc.) and standardized the variable names (using `phone_number`, `first_name`, `wallet_balance`, `winning_pattern` as requested). This document represents the **Source of Truth** for your backend.
 
-- **Base URL:** `/api/v1`
-- **Authentication:** Bearer Token (JWT) in Headers (`Authorization: Bearer <token>`)
-- **Data Format:** JSON
+***
 
----
+# Bingo Game System - API Requirement Specification (vFinal)
 
-### **1. Authentication Module**
+## 1. Authentication Module
 
-#### **1.1 Sign In**
-
-- **Access:** All Roles (Owner, Manager, Superagent, Jester)
-- **Endpoint:** `POST /auth/signin`
-- **Description:** Authenticates the user. The backend determines the role and permissions.
+### 1.1 Sign In
+*   **Endpoint:** `POST /auth/signin`
+*   **Access:** Public (All Roles)
+*   **Description:** Authenticates users. Returns a token and user profile.
+*   **Special Logic:**
+    *   If Role is **OWNER**, `wallet_balance` returns the string `"UNLIMITED"`.
+    *   For others, `wallet_balance` returns a `float`.
 
 **Request Body:**
-
 ```json
 {
   "phone_number": "+251911234567",
@@ -25,33 +24,31 @@ Here is the comprehensive Backend API Documentation designed for the Bingo Game 
 }
 ```
 
-**Response (Success - 200 OK):**
-
+**Response (Owner Example):**
 ```json
 {
   "status": "success",
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR...",
+    "token": "eyJhbGciOiJIUzI1Ni...",
     "user": {
-      "id": 101,
+      "id": 1,
       "first_name": "Abebe",
       "last_name": "Kebede",
-      "role": "Owner",
-      "balance": "UNLIMITED"
+      "role": "OWNER", 
+      "wallet_balance": "UNLIMITED",
+      "city": "Addis Ababa",
+      "region": "Bole"
     }
   }
 }
 ```
 
-#### **1.2 Change Password**
-
-- **Access:** All Roles (Owner, Manager, Superagent, Jester)
-- **Endpoint:** `POST /auth/change-password`
-- **Description:** Allows a logged-in user to update their password.
-- **Security:** Requires the user to provide their _current_ password for verification before setting a new one.
+### 1.2 Change Password
+*   **Endpoint:** `POST /auth/change-password`
+*   **Access:** Authenticated Users
+*   **Logic:** Verifies old password before updating.
 
 **Request Body:**
-
 ```json
 {
   "old_password": "currentPassword123",
@@ -60,37 +57,19 @@ Here is the comprehensive Backend API Documentation designed for the Bingo Game 
 }
 ```
 
-**Response (Success - 200 OK):**
-
-```json
-{
-  "status": "success",
-  "message": "Password updated successfully."
-}
-```
-
-**Response (Error - 400 Bad Request):**
-
-- If `old_password` is incorrect.
-- If `new_password` does not match `confirm_password`.
-
-_Note: If the role is Jester, Manager, or Superagent, `balance` returns the actual numeric float value._
-
 ---
 
-### **2. User Management Module**
+## 2. User Management Module (Prefix: `/api/management`)
 
-#### **2.1 Create New User**
-
-- **Access:** Owner, Manager, Superagent (Restricted by hierarchy)
-- **Endpoint:** `POST /users/create`
-- **Logic:**
-  - **Owner:** Can create Manager, Superagent, Jester.
-  - **Manager:** Can create Superagent, Jester.
-  - **Superagent:** Can create Jester only.
+### 2.1 Create User
+*   **Endpoint:** `POST /api/management/users/create`
+*   **Access:** Owner, Manager, Superagent (Hierarchy Enforced)
+*   **Logic:**
+    *   **Owner** creates Manager, Superagent, Jester.
+    *   **Manager** creates Superagent, Jester.
+    *   **Superagent** creates Jester.
 
 **Request Body:**
-
 ```json
 {
   "first_name": "Dawit",
@@ -99,40 +78,26 @@ _Note: If the role is Jester, Manager, or Superagent, `balance` returns the actu
   "city": "Addis Ababa",
   "region": "Bole",
   "password": "initialPassword123",
-  "role": "Jester"
+  "role": "JESTER" 
 }
 ```
 
-**Response (Success - 201 Created):**
+### 2.2 List Users
+*   **Endpoint:** `GET /api/management/users`
+*   **Access:** Owner (All), Manager/Superagent (Subordinates Only)
+*   **Query Params:** `?role=JESTER` (Optional)
 
-```json
-{
-  "status": "success",
-  "message": "Jester account created successfully.",
-  "data": {
-    "user_id": 505,
-    "created_by": 101
-  }
-}
-```
-
-#### **2.2 Get Users List**
-
-- **Access:** Owner (All), Manager/Superagent (Subordinates only)
-- **Endpoint:** `GET /users`
-- **Query Params:** `?role=Jester` (Optional filter)
-
-**Response (Success - 200 OK):**
-
+**Response:**
 ```json
 {
   "status": "success",
   "data": [
     {
       "id": 505,
-      "name": "Dawit Mekonnen",
-      "role": "Jester",
-      "balance": 200.0,
+      "first_name": "Dawit",
+      "last_name": "Mekonnen",
+      "role": "JESTER",
+      "wallet_balance": 200.00,
       "superior_id": 101,
       "status": "active"
     }
@@ -140,180 +105,172 @@ _Note: If the role is Jester, Manager, or Superagent, `balance` returns the actu
 }
 ```
 
-#### **2.3 Update Profile**
+### 2.3 Get Current Profile (Me)
+*   **Endpoint:** `GET /users/me`
+*   **Access:** Authenticated User
+*   **Logic:** `total_sent` and `total_received` are calculated dynamically from the `transactions` table.
 
-- **Access:** All Roles (Own profile only)
-- **Endpoint:** `PUT /users/profile`
-
-**Request Body:**
-
+**Response:**
 ```json
 {
-  "first_name": "NewName",
-  "last_name": "NewLast",
-  "city": "NewCity",
-  "region": "NewRegion"
+  "user": {
+    "id": 505,
+    "first_name": "Dawit",
+    "phone_number": "+251922334455",
+    "role": "JESTER",
+    "city": "Adama",
+    "region": "Nazret"
+  },
+  "wallet_balance": 200.00,
+  "total_sent": 0.00,
+  "total_received": 5000.00
+}
+```
+
+### 2.4 Update Profile
+*   **Endpoint:** `PUT /api/management/users/profile`
+*   **Access:** Authenticated User (Own Profile)
+
+**Request Body:**
+```json
+{
+  "first_name": "Dawit",
+  "city": "Adama"
 }
 ```
 
 ---
 
-### **3. Financial Module (Packages)**
+## 3. Financial Module (Prefix: `/transactions`)
 
-#### **3.1 Send Package (Credit Transfer)**
-
-- **Access:** Owner, Manager, Superagent
-- **Endpoint:** `POST /transactions/send-package`
-- **Logic:**
-  - **Owner:** Logic ignores sender balance (Unlimited). Adds amount to receiver.
-  - **Manager/Superagent:** Checks sender balance > Deducts Amount > Adds to receiver.
+### 3.1 Send Package (Credit Transfer)
+*   **Endpoint:** `POST /transactions/send-package`
+*   **Access:** Owner, Manager, Superagent
+*   **Logic:**
+    *   **Owner:** Bypasses balance check (Unlimited).
+    *   **Manager/Superagent:** Checks if `wallet_balance >= amount`.
+    *   **Action:** Atomic transfer (Deduct Sender -> Add Receiver).
 
 **Request Body:**
-
 ```json
 {
   "receiver_id": 505,
-  "amount": 5000.0
+  "amount": 5000.00
 }
 ```
 
-**Response (Success - 200 OK):**
-
-```json
-{
-  "status": "success",
-  "message": "Package sent successfully",
-  "data": {
-    "transaction_id": "TXN-998877",
-    "sender_new_balance": "UNLIMITED",
-    "receiver_new_balance": 5200.0
-  }
-}
-```
-
-#### **3.2 Request Package**
-
-- **Access:** Jester only
-- **Endpoint:** `POST /transactions/request-package`
+### 3.2 Request Package
+*   **Endpoint:** `POST /transactions/request-package`
+*   **Access:** Jester Only
 
 **Request Body:**
-
 ```json
 {
-  "amount": 2000.0,
-  "note": "Running low for night shift"
+  "amount": 2000.00,
+  "note": "For night shift"
 }
 ```
 
-#### **3.3 View Transactions**
-
-- **Access:**
-  - Owner (See All: Game Trans & Package Trans)
-  - Manager/Superagent (See Subordinates)
-  - Jester (See Own)
-- **Endpoint:** `GET /transactions`
-- **Query Params:** `?type=package` or `?type=game`
-
-**Response (Success - 200 OK):**
-
-```json
-{
-  "status": "success",
-  "data": [
-    {
-      "id": 1,
-      "type": "package",
-      "sender": "Owner Admin",
-      "receiver": "Jester Dawit",
-      "amount": 5000.0,
-      "date": "2023-10-27T10:00:00Z"
-    }
-  ]
-}
-```
-
-#### **3.4 Revert Sent Package**
-
-- **Access:** Owner, Manager, Superagent
-- **Endpoint:** `POST /transactions/revert`
-- **Description:** Allows a sender to take back a package sent by mistake.
-- **Logic:**
-  1.  **Validation:** The `current_user` must be the **Sender** of the original transaction (or an Owner with override permissions).
-  2.  **Balance Check:** The system checks if the **Receiver** currently has enough balance to return the amount.
-      - _If yes:_ Deduct amount from Receiver -> Add back to Sender.
-      - _If no:_ Return `400 Bad Request` (Receiver already spent the money).
-  3.  **Status Update:** Mark the original transaction status as `REVERTED`.
-
-**Request Body:**
-
-```json
-{
-  "transaction_id": "TXN-998877"
-}
-```
-
-**Response (Success - 200 OK):**
-
-```json
-{
-  "status": "success",
-  "message": "Transaction reverted successfully.",
-  "data": {
-    "reverted_amount": 5000.0,
-    "sender_new_balance": 15000.0,
-    "receiver_new_balance": 200.0,
-    "status": "REVERTED"
-  }
-}
-```
-
----
-
-### **4. Game Operations Module**
-
-#### **4.1 End Game (Payout)**
-
-- **Access:** Jester
-- **Endpoint:** `POST /game/end`
-- **Logic:**
-  - Calculates the payout.
-  - **Formula:** `Payout = Total Pot - Cut`.
-  - Deducts the Payout amount from the Jester's wallet balance.
-
-**Request Body:**
-
-```json
-{
-  "game_id": "GAME-777",
-  "winner_cartela_id": "CARD-05"
-}
-```
+### 3.3 View Transactions
+*   **Endpoint:** `GET /transactions`
+*   **Access:** All Roles (Filtered by Hierarchy/Ownership)
+*   **Query Params:** `?type=package` or `?type=game`
 
 **Response:**
+```json
+[
+  {
+    "id": 987,
+    "transaction_type": "PACKAGE",
+    "sender_id": 101,
+    "receiver_id": 505,
+    "amount": 5000.00,
+    "created_at": "2023-10-27T10:00:00Z",
+    "status": "COMPLETED"
+  }
+]
+```
 
+### 3.4 Revert Package
+*   **Endpoint:** `POST /transactions/revert`
+*   **Access:** Sender (Owner, Manager, Superagent)
+*   **Logic:**
+    1.  Verifies Caller is the Sender.
+    2.  Checks if Receiver has enough funds to return.
+    3.  Reverses the transfer and marks status `REVERTED`.
+
+**Request Body:**
 ```json
 {
-  "status": "success",
-  "message": "Game Over. Accounts updated.",
-  "data": {
-    "total_pot": 500.0,
-    "house_cut": 100.0,
-    "winner_payout": 400.0,
-    "jester_balance_deducted": 400.0,
-    "jester_remaining_balance": 4800.0
-  }
+  "transaction_id": 987
 }
 ```
 
 ---
 
-### **5. Error Handling Codes**
+## 4. Game Operations Module (Prefix: `/game`)
 
-The API will return standard HTTP status codes:
+### 4.1 End Game (Settlement)
+*   **Endpoint:** `POST /game/end`
+*   **Access:** Jester Only
+*   **Logic:**
+    1.  **Deduction:** `wallet_balance = wallet_balance - win_amount`.
+    2.  **Recording:** Saves the full game details (Pot, Cut, Pattern, etc.) to `GameTransaction`.
+    3.  **Timestamp:** Uses the provided `date`/`time` or server time if preferred.
 
-- `200` - OK
-- `400` - Bad Request (e.g., Insufficient balance for Manager/Superagent).
-- `401` - Unauthorized (Invalid Token).
-- `403` - Forbidden (e.g., Jester trying to create a User).
-- `404` - User or Resource Not Found.
-- `500` - Internal Server Error.
+**Request Body:**
+```json
+{
+  "total_pot": 5000.00,
+  "cut": 1000.00,
+  "winning_pattern": "FULL_HOUSE",
+  "win_amount": 4000.00,
+  "bet_amount": 50.00,
+  "date": "2023-10-27",
+  "time": "14:30:00",
+  "jester_name": "Dawit"
+}
+```
+*(Note: `win_amount` is the final payout amount that is deducted from Jester's wallet)*
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "new_wallet_balance": 4800.00,
+    "payout_processed": 4000.00
+  }
+}
+```
+
+### 4.2 Jester Game History
+*   **Endpoint:** `GET /game/my-transactions`
+*   **Access:** Jester Only
+*   **Description:** Returns list of games managed by this Jester.
+
+**Response:**
+```json
+[
+  {
+    "id": 555,
+    "bet_amount": 50.00,
+    "winning_pattern": "FULL_HOUSE",
+    "win_amount": 4000.00,
+    "jester_remaining_balance": 4800.00,
+    "tx_date": "2023-10-27",
+    "tx_time": "14:30:00"
+  }
+]
+```
+
+---
+
+## 5. Error Handling Codes
+*   **200:** Success
+*   **201:** Created
+*   **400:** Bad Request (e.g., Insufficient Funds, Invalid Password)
+*   **401:** Unauthorized (Invalid Token)
+*   **403:** Forbidden (Hierarchy Violation)
+*   **404:** Not Found
+*   **500:** Server Error

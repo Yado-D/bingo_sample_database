@@ -6,74 +6,55 @@ from app import database
 router = APIRouter(prefix="/game", tags=["Game End"])
 
 
-@router.post("/end", status_code=status.HTTP_200_OK, response_model=schemas.GameEndResponse)
+@router.post("/end", status_code=status.HTTP_200_OK)
 def end_game(
-    payload: schemas.GameEndRequest,
+    payload: schemas.EndGameRequest,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(oauth2.get_current_user),
 ):
     # Only Jester can end games
-    if current_user.role.value != "JESTER":
+    try:
+        role = getattr(current_user.role, "value", str(current_user.role)).upper()
+    except Exception:
+        role = str(getattr(current_user, "role", "")).upper()
+
+    if role != "JESTER":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Jester can end a game")
 
-    # try to find a matching session
-    session = None
-    try:
-        gid_int = int(payload.game_id.split("-")[-1]) if "-" in payload.game_id else int(payload.game_id)
-        session = db.query(models.GameSession).filter(models.GameSession.id == gid_int).first()
-    except Exception:
-        session = None
-
-    if not session:
-        # fallback: latest session for this user
-        session = (
-            db.query(models.GameSession)
-            .filter(models.GameSession.owner_id == current_user.id)
-            .order_by(models.GameSession.created_at.desc())
-            .first()
-        )
-
-    if not session:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game session not found")
-
-    total_pot = float(session.total_pot or session.total_bet or 0.0)
-    house_cut = float(session.house_cut or 0.0)
-    winner_payout = total_pot - house_cut
-
-    # Deduct payout from Jester's wallet balance
+    # Wallet Update: Deduct the win_amount from Jester's wallet
     current_balance = float(getattr(current_user, "wallet_balance", 0.0) or 0.0)
-    if current_balance < winner_payout:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient balance to pay out winner")
+    win_amount = float(payload.win_amount or 0.0)
 
-    new_balance = current_balance - winner_payout
+    if current_balance < win_amount:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Insufficient balance to cover the payout")
+
+    new_balance = current_balance - win_amount
     db.query(models.User).filter(models.User.id == current_user.id).update({"wallet_balance": new_balance})
 
-    # Log game transaction
-    tx = models.GameTransaction(
-        bet_amount=session.bet_amount_per_card,
-        game_type="BINGO",
-        number_of_cards=len(session.selected_cards) if session.selected_cards else 0,
-        cut_amount=house_cut,
-        winner_payout=winner_payout,
-        jester_id=current_user.id,
-        jester_name=(getattr(current_user, "first_name", None) or getattr(current_user, "name", None)),
-        # amount deducted from the jester for paying out the winner
-        dedacted_amount=winner_payout,
-        jester_remaining_balance=new_balance,
-        total_balance=new_balance,
-    )
-    db.add(tx)
-    db.commit()
-    db.refresh(tx)
+    # Save record: create GameTransaction
+    try:
+        tx = models.GameTransaction(
+            bet_amount=payload.bet_amount,
+            total_pot=payload.total_pot,
+            cut_amount=payload.cut,
+            winning_pattern=payload.winning_pattern,
+            winner_payout=payload.win_amount,
+            dedacted_amount=payload.win_amount,
+            jester_id=current_user.id,
+            jester_name=payload.jester_name,
+            tx_date=payload.date,
+            tx_time=payload.time,
+            jester_remaining_balance=new_balance,
+            total_balance=new_balance,
+        )
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Could not save transaction: {e}")
 
-    return {
-        "status": "success",
-        "message": "Game Over. Accounts updated.",
-        "data": {
-            "total_pot": total_pot,
-            "house_cut": house_cut,
-            "winner_payout": winner_payout,
-            "jester_balance_deducted": winner_payout,
-            "jester_remaining_balance": new_balance,
-        },
-    }
+    return {"status": "success", "new_balance": float(new_balance)}

@@ -135,3 +135,4 @@ The system must log two distinct types of financial movements:
 | **Add Jester** | **Yes** | **Yes** | **Yes** | No |
 | **View Global Users**| **Yes** | No (Branch only) | No (Branch only) | No |
 | **View Game Trans.** | **Yes** | Yes (Downstream) | Yes (Downstream) | Own only |
+
