@@ -109,6 +109,10 @@ def list_transactions(
             "amount": float(tx.package_amount or 0.0),
             "created_at": tx.created_at.isoformat() if hasattr(tx, "created_at") else None,
             "status": tx.status or "COMPLETED",
+            "extra": {
+                "sender_name": getattr(tx, "sender_name", None),
+                "receiver_name": getattr(tx, "receiver_name", None),
+            },
         }
 
     def serialize_game(tx):
@@ -190,8 +194,8 @@ def list_transactions(
                 "bet_amount": float(t.get("bet_amount") or 0.0),
                 "number_of_cards": int(t.get("number_of_cards") or 0),
                 "winning_pattern": t.get("winning_pattern"),
-                "winner_payout": float(t.get("winner_payout") or 0.0),
-                "created_at": t.get("created_at"),
+                    "winner_payout": float(t.get("winner_payout") or 0.0),
+                    "created_at": t.get("created_at"),
             })
         else:
             serialized.append(serialize_game(t))
