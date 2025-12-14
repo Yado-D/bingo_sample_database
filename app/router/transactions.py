@@ -89,51 +89,120 @@ def list_transactions(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(oauth2.get_current_user),
 ):
-    # Owner sees all
-    if current_user.role.value == "OWNER":
-        if type == "package":
-            txs = db.query(models.PackageTransaction).all()
-        elif type == "game":
-            try:
-                txs = db.query(models.GameTransaction).all()
-            except ProgrammingError:
-                # clear the failed transaction so we can run a fallback raw query
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                rows = db.execute(text(
-                    "SELECT id, bet_amount, winning_pattern, number_of_cards, created_at FROM game_transactions"
-                )).fetchall()
-                txs = [dict(row._mapping) for row in rows]
-        else:
-            try:
-                game_rows = db.query(models.GameTransaction).all()
-            except ProgrammingError:
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                rows = db.execute(text(
-                    "SELECT id, bet_amount, winning_pattern, number_of_cards, created_at FROM game_transactions"
-                )).fetchall()
-                game_rows = [dict(row._mapping) for row in rows]
-            txs = db.query(models.PackageTransaction).all() + game_rows
-        return {"status": "success", "data": txs}
+    # Determine the scope of jester ids to include based on role
+    role_val = getattr(current_user.role, "value", str(current_user.role)).upper()
 
-    # Manager/Superagent see downstream
-    if current_user.role.value in ("MANAGER", "SUPERAGENT"):
+    if role_val == "OWNER":
+        subs = None  # all
+    elif role_val in ("MANAGER", "SUPERAGENT"):
         subs = [u.id for u in db.query(models.User).filter(models.User.superior_id == current_user.id).all()]
-        txs = db.query(models.PackageTransaction).filter(
-            (models.PackageTransaction.receiver_id.in_(subs)) | (models.PackageTransaction.sender_id.in_(subs))
-        ).all()
-        return {"status": "success", "data": txs}
+    else:
+        # Jester
+        subs = [current_user.id]
 
-    # Jester sees own
-    txs = db.query(models.PackageTransaction).filter(
-        (models.PackageTransaction.receiver_id == current_user.id) | (models.PackageTransaction.sender_id == current_user.id)
-    ).all()
-    return {"status": "success", "data": txs}
+    def serialize_package(tx):
+        return {
+            "id": tx.id,
+            "transaction_type": "PACKAGE",
+            "sender_id": tx.sender_id,
+            "receiver_id": tx.receiver_id,
+            "amount": float(tx.package_amount or 0.0),
+            "created_at": tx.created_at.isoformat() if hasattr(tx, "created_at") else None,
+            "status": tx.status or "COMPLETED",
+        }
+
+    def serialize_game(tx):
+        return {
+            "id": tx.id,
+            "transaction_type": "GAME",
+            "jester_id": tx.jester_id,
+            "jester_name": tx.jester_name,
+            "bet_amount": float(tx.bet_amount or 0.0),
+            "number_of_cards": int(tx.number_of_cards or 0),
+            "winning_pattern": tx.winning_pattern,
+            "winner_payout": float(tx.winner_payout or 0.0),
+            "created_at": tx.created_at.isoformat() if hasattr(tx, "created_at") else None,
+        }
+
+    # Helper to fetch package transactions scoped to `subs` (None => all)
+    def get_package_txs():
+        if subs is None:
+            return db.query(models.PackageTransaction).order_by(models.PackageTransaction.created_at.desc()).all()
+        return db.query(models.PackageTransaction).filter(
+            (models.PackageTransaction.receiver_id.in_(subs)) | (models.PackageTransaction.sender_id.in_(subs))
+        ).order_by(models.PackageTransaction.created_at.desc()).all()
+
+    # Helper to fetch game transactions scoped to `subs` (None => all)
+    def get_game_txs():
+        if subs is None:
+            try:
+                return db.query(models.GameTransaction).order_by(models.GameTransaction.created_at.desc()).all()
+            except ProgrammingError:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+                rows = db.execute(text(
+                    "SELECT * FROM game_transactions ORDER BY created_at DESC"
+                )).fetchall()
+                return [dict(r._mapping) for r in rows]
+        return db.query(models.GameTransaction).filter(models.GameTransaction.jester_id.in_(subs)).order_by(models.GameTransaction.created_at.desc()).all()
+
+    # Return only package transactions
+    if type == "package":
+        pkg_txs = get_package_txs()
+        return {"status": "success", "data": [serialize_package(t) for t in pkg_txs]}
+
+    # Return only game transactions
+    if type == "game":
+        game_txs = get_game_txs()
+        # game_txs may be dict rows when using fallback raw query
+        result = []
+        for t in game_txs:
+            if isinstance(t, dict):
+                result.append({
+                    "id": t.get("id"),
+                    "transaction_type": "GAME",
+                    "jester_id": t.get("jester_id"),
+                    "jester_name": t.get("jester_name"),
+                    "bet_amount": float(t.get("bet_amount") or 0.0),
+                    "number_of_cards": int(t.get("number_of_cards") or 0),
+                    "winning_pattern": t.get("winning_pattern"),
+                    "winner_payout": float(t.get("winner_payout") or 0.0),
+                    "created_at": t.get("created_at"),
+                })
+            else:
+                result.append(serialize_game(t))
+        return {"status": "success", "data": result}
+
+    # No type param -> return both package and game transactions merged chronologically
+    pkg_txs = get_package_txs()
+    game_txs = get_game_txs()
+
+    serialized = [serialize_package(t) for t in pkg_txs]
+    for t in game_txs:
+        if isinstance(t, dict):
+            serialized.append({
+                "id": t.get("id"),
+                "transaction_type": "GAME",
+                "jester_id": t.get("jester_id"),
+                "jester_name": t.get("jester_name"),
+                "bet_amount": float(t.get("bet_amount") or 0.0),
+                "number_of_cards": int(t.get("number_of_cards") or 0),
+                "winning_pattern": t.get("winning_pattern"),
+                "winner_payout": float(t.get("winner_payout") or 0.0),
+                "created_at": t.get("created_at"),
+            })
+        else:
+            serialized.append(serialize_game(t))
+
+    # Optionally sort by created_at desc when present
+    try:
+        serialized.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    except Exception:
+        pass
+
+    return {"status": "success", "data": serialized}
 
 
 @router.post("/revert", status_code=status.HTTP_200_OK)

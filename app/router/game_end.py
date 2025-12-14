@@ -33,6 +33,25 @@ def end_game(
 
     # Save record: create GameTransaction
     try:
+        # calculate number_of_cards from total_pot and bet_amount when possible
+        try:
+            bet = float(payload.bet_amount or 0.0)
+        except Exception:
+            bet = 0.0
+
+        try:
+            total_pot = float(payload.total_pot or 0.0)
+        except Exception:
+            total_pot = 0.0
+
+        if bet > 0:
+            try:
+                number_of_cards = int(total_pot / bet)
+            except Exception:
+                number_of_cards = 0
+        else:
+            number_of_cards = 0
+
         tx = models.GameTransaction(
             bet_amount=payload.bet_amount,
             total_pot=payload.total_pot,
@@ -40,6 +59,7 @@ def end_game(
             winning_pattern=payload.winning_pattern,
             winner_payout=payload.win_amount,
             dedacted_amount=payload.win_amount,
+            number_of_cards=number_of_cards,
             jester_id=current_user.id,
             jester_name=payload.jester_name,
             tx_date=payload.date,
