@@ -81,6 +81,24 @@ def users_list(role: str = None, db: Session = Depends(get_db), current_user: mo
 
     data = []
     for u in users:
+        # include latest package transaction sender/receiver names as extra
+        try:
+            last_tx = (
+                db.query(models.PackageTransaction)
+                .filter(
+                    (models.PackageTransaction.receiver_id == u.id) | (models.PackageTransaction.sender_id == u.id)
+                )
+                .order_by(models.PackageTransaction.created_at.desc())
+                .first()
+            )
+        except Exception:
+            last_tx = None
+
+        extra = {
+            "sender_name": getattr(last_tx, "sender_name", None) if last_tx else None,
+            "receiver_name": getattr(last_tx, "receiver_name", None) if last_tx else None,
+        }
+
         data.append({
             "id": u.id,
             "name": f"{getattr(u,'first_name',None) or getattr(u,'name',None)} {getattr(u,'last_name',None) or ''}".strip(),
@@ -88,6 +106,7 @@ def users_list(role: str = None, db: Session = Depends(get_db), current_user: mo
             "balance": float(getattr(u, 'wallet_balance', 0.0) or 0.0),
             "superior_id": getattr(u, 'superior_id', None),
             "status": "active",
+            "extra": extra,
         })
 
     return {"status": "success", "data": data}
